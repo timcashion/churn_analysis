@@ -180,9 +180,11 @@ coef_plot_data = coef_plot_data.sort_values('Coefficient')
 
 var_ordered = coef_plot_data['Variable'][coef_plot_data['Coefficient'].sort_values().index.tolist()] 
 coef_plot_data['Variable'] = pd.Categorical(coef_plot_data['Variable'], categories=list(reversed(list(var_ordered))), ordered=True)
-from plotnine import ggplot, aes, geom_col, coord_flip
+from plotnine import ggplot, aes, geom_col, coord_flip, theme_classic
 
 (ggplot(coef_plot_data, aes(x='Variable', y='Coefficient'))
 + geom_col()
-+ coord_flip())
++ coord_flip()
++ theme_classic()).save(filename="LogRegr_Coefficients.pdf", dpi=300)
 
+.save()
