@@ -1,6 +1,8 @@
 # basics
 import numpy as np
 import pandas as pd
+from itertools import chain
+
 
 # classifiers / models
 from sklearn.linear_model import LinearRegression, LogisticRegression
@@ -83,14 +85,13 @@ ys = [y, y_valid, y_train, y_test]
 
 
 #Fit and Report function:
-def fit_and_report(model, X, y, Xv, yv, mode = 'classification'):
+def fit_and_report_errors(model, X, y, Xv, yv, mode = 'classification'):
     """
     Original source: 
     https://github.ubc.ca/MDS-2019-20/DSCI_573_feat-model-select_instructors/tree/master/source
     
-    Original: fits a model and returns train and validation errors
-    New: fits a model and returns accuracy, precision, and recall for train and validation sets
-    Arguments
+    fits a model and returns train and validation errors
+    
     ---------     
     model -- sklearn classifier model
         The sklearn model
@@ -119,18 +120,15 @@ def fit_and_report(model, X, y, Xv, yv, mode = 'classification'):
     if mode.lower().startswith('regress'):
         errors = [mean_squared_error(y, model.predict(X)), mean_squared_error(yv, model.predict(Xv))]
     if mode.lower().startswith('classif'):
-        pred_train = model.predict(X)
-        pred_valid = model.predict(Xv)
-        accuracy = [accuracy_score(y, pred_train), accuracy_score(yv, pred_valid)]
-        precision = [precision_score(y, pred_train), precision_score(yv, pred_valid)]
-        recall = [recall_score(y, pred_train), recall_score(yv, pred_valid)]
-    return accuracy, precision, recall
+        errors = [1 - model.score(X, y), 1 - model.score(Xv, yv)]    
+    return errors
+
 
 
 #Establish baseline/dummy model:
 from sklearn.dummy import DummyClassifier
 dummy = DummyClassifier()
-dummy_errors = fit_and_report(dummy, X_train, y_train, X_valid, y_valid)
+dummy_errors = fit_and_report_errors(dummy, X_train, y_train, X_valid, y_valid)
 
 #Set up dictionary for storing various models and their errors:
 model_dict = {}
@@ -145,16 +143,15 @@ models = {'Logistic regression': LogisticRegression(),
 
 #For loop to go over basic models
 for model_name, model in models.items():
-    errors = fit_and_report(model, X_train, y_train, X_valid, y_valid)
+    errors = fit_and_report_errors(model, X_train, y_train, X_valid, y_valid)
     model_dict[model_name] = errors #Save errors in model dictionary
 
 #Convert model scores to dataframe for easy viewing of results 
 model_results = pd.DataFrame(model_dict).T
-#model_results.columns = ["train_error","test_error"]
-model_results.columns = ["train_accuracy", "test_accuracy", 
-    "train_precision", "test_precision", 
-    "train_recall", "test_recall"]
-
+model_results.columns = ["train_error","test_error"]
+model_results.train_error = round(model_results.train_error, ndigits=4)
+model_results.test_error = round(model_results.test_error, ndigits=4)
+model_results.to_csv("model_results.csv")
 
 model_results.columns
 #All models show an improvement over dummy model, with some (i.e., RBF SVM and Random Forest) showing HIGH signs of overfitting. 
@@ -185,6 +182,59 @@ from plotnine import ggplot, aes, geom_col, coord_flip, theme_classic
 (ggplot(coef_plot_data, aes(x='Variable', y='Coefficient'))
 + geom_col()
 + coord_flip()
-+ theme_classic()).save(filename="LogRegr_Coefficients.pdf", dpi=300)
++ theme_classic()).save(filename="LogRegr_Coefficients.png", dpi=300)
 
-.save()
+
+
+
+
+#Save for later:
+
+
+#Fit and Report function:
+#Modified to be only for classification 
+def fit_and_report_scores(model, X, y, Xv, yv):
+    """
+    Original source: 
+    https://github.ubc.ca/MDS-2019-20/DSCI_573_feat-model-select_instructors/tree/master/source
+    
+    Original: fits a model and returns train and validation errors
+    New: fits a model and returns accuracy, precision, and recall for train and validation sets
+    Arguments
+    ---------     
+    model -- sklearn classifier model
+        The sklearn model
+    X -- numpy.ndarray        
+        The X part of the train set
+    y -- numpy.ndarray
+        The y part of the train set
+    Xv -- numpy.ndarray        
+        The X part of the validation set
+    yv -- numpy.ndarray
+        The y part of the validation set       
+    
+    Keyword arguments 
+    -----------------
+    mode -- str 
+        The mode for calculating error (default = 'regression') 
+        TC: Changed default mode to classification for this analysis
+
+    Returns
+    -------
+    errors -- list
+        A list containing accuracy, precision, and recall on train (on X, y) and validation (on Xv, yv)
+    
+    """
+    model.fit(X, y)
+    pred_train = model.predict(X)
+    pred_valid = model.predict(Xv)
+    accuracy = [accuracy_score(y, pred_train), accuracy_score(yv, pred_valid)]
+    precision = [precision_score(y, pred_train), precision_score(yv, pred_valid)]
+    recall = [recall_score(y, pred_train), recall_score(yv, pred_valid)]
+    scores = chain([accuracy, precision, recall])
+    return scores
+
+
+#model_results.columns = ["train_accuracy", "test_accuracy", 
+#    "train_precision", "test_precision", 
+#    "train_recall", "test_recall"]

@@ -1,0 +1,6 @@
+,train_error,test_error
+dummy,0.3826,0.403
+Logistic regression,0.1935,0.2068
+RBF SVM,0.0704,0.2281
+random forest,0.0145,0.2161
+neural net,0.192,0.2104
