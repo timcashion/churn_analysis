@@ -1,6 +1,8 @@
 ,train_error,test_error
-dummy,0.3826,0.403
-Logistic regression,0.1935,0.2068
-RBF SVM,0.0704,0.2281
-random forest,0.0145,0.2161
-neural net,0.192,0.2104
+dummy,0.2658,0.2658
+Logistic regression,0.1918,0.209
+RBF SVM,0.2082,0.2018
+random forest,0.0009,0.2253
+neural net,0.1238,0.2267
+xgboost,0.1728,0.2026
+lgbm,0.1,0.204

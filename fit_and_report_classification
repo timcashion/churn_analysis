@@ -1,0 +1,46 @@
+#Dependencies:
+from sklearn.metrics import precision_score, recall_score, accuracy_score
+from itertools import chain
+
+#Fit and Report function:
+#Modified to be only for classification 
+def fit_and_report_scores(model, X, y, Xv, yv):
+    """
+    Original source: 
+    https://github.ubc.ca/MDS-2019-20/DSCI_573_feat-model-select_instructors/tree/master/source
+    
+    Original: fits a model and returns train and validation errors
+    New: fits a model and returns accuracy, precision, and recall for train and validation sets
+    Arguments
+    ---------     
+    model -- sklearn classifier model
+        The sklearn model
+    X -- numpy.ndarray        
+        The X part of the train set
+    y -- numpy.ndarray
+        The y part of the train set
+    Xv -- numpy.ndarray        
+        The X part of the validation set
+    yv -- numpy.ndarray
+        The y part of the validation set       
+    
+    Keyword arguments 
+    -----------------
+    mode -- str 
+        The mode for calculating error (default = 'regression') 
+        TC: Changed default mode to classification for this analysis
+
+    Returns
+    -------
+    errors -- list
+        A list containing accuracy, precision, and recall on train (on X, y) and validation (on Xv, yv)
+    
+    """
+    model.fit(X, y)
+    pred_train = model.predict(X)
+    pred_valid = model.predict(Xv)
+    accuracy = [accuracy_score(y, pred_train), accuracy_score(yv, pred_valid)]
+    precision = [precision_score(y, pred_train), precision_score(yv, pred_valid)]
+    recall = [recall_score(y, pred_train), recall_score(yv, pred_valid)]
+    scores = chain([accuracy, precision, recall])
+    return scores

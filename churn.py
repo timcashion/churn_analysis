@@ -9,68 +9,24 @@ from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.svm import SVC, SVR
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.neural_network import MLPClassifier
+from lightgbm import LGBMClassifier
+from xgboost import XGBClassifier
 
 # other
 from sklearn.preprocessing import normalize
 from sklearn.metrics import log_loss, classification_report, precision_score, recall_score, accuracy_score
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, plot_confusion_matrix
 from sklearn.model_selection import train_test_split, GridSearchCV, RandomizedSearchCV, cross_val_score, StratifiedKFold, KFold
+import time
 
-
-dat = pd.read_csv("WA_Fn-UseC_-Telco-Customer-Churn.csv")
-dat.head()
-dat.describe()
-dat = dat.drop(columns=["customerID"])
-
-#Clean datasets and encode where necessary:
-dat.Churn = dat.Churn.map(dict(Yes=1, No=0))
-
-#Filter out " " Total Charges:
-len(dat)
-#dat = dat[pd.isna(dat.TotalCharges)==False] #I thought they were NAs but they are " "
-dat = dat[dat.TotalCharges != " "]
-len(dat)
-
-dat.dtypes #Check data types for cleaning and encoding
-numeric_cols = ["MonthlyCharges", "TotalCharges"]
-integer_cols = ["SeniorCitizen", "tenure"]
-categorical_cols = ["gender", 'Partner', "Dependents", "PhoneService", 
-"MultipleLines", "InternetService", "OnlineSecurity", "OnlineBackup", "DeviceProtection", "TechSupport", 
-"StreamingTV", "StreamingMovies", "Contract",
- "PaperlessBilling", "PaymentMethod"]
-
-dat = pd.get_dummies(dat, columns=categorical_cols, drop_first=True)
-dat[numeric_cols] = dat[numeric_cols].astype(float)
-dat[integer_cols] = dat[integer_cols].astype(int)
-
-#Do we need to normalize our numeric and integer cols?
-#SeniorCitizen was already in binary form. So no. 
-
-from plotnine import ggplot, aes, geom_histogram
-(ggplot(dat, aes(x='MonthlyCharges'))
-+ geom_histogram())
-
-(ggplot(dat, aes(x='TotalCharges'))
-+ geom_histogram())
-
-#Neither follow a normal distribution. Log transformation could help, but these are odd. 
-dat["LogTotalCharges"] = np.log(dat["TotalCharges"]+1)
-dat["LogMonthlyCharges"] = np.log(dat["MonthlyCharges"]+1)
-
-
-(ggplot(dat, aes(x='LogMonthlyCharges'))
-+ geom_histogram())
-
-(ggplot(dat, aes(x='LogTotalCharges'))
-+ geom_histogram())
-
-#Doesn't really help so leave this for now. 
-
-dat = dat.drop(columns = ["LogTotalCharges", "LogMonthlyCharges"])
+#Load data: 
+from clean_load_data import clean_load_data
+dat = clean_load_data()
 
 #Split to X and y:
 y = dat.Churn
 X = dat.drop(columns=["Churn"]) #Drop Dependent and ID column 
+
 
 #Split data into 3 subsets:
 # Split first 80/20 then 75/25 to get a 60/20/20 data split.
@@ -83,51 +39,10 @@ len(dat) == len(X_train) + len(X_valid) + len(X_test)
 ys = [y, y_valid, y_train, y_test]
 [round(np.mean(y), ndigits=4) for y in ys]
 
-
-#Fit and Report function:
-def fit_and_report_errors(model, X, y, Xv, yv, mode = 'classification'):
-    """
-    Original source: 
-    https://github.ubc.ca/MDS-2019-20/DSCI_573_feat-model-select_instructors/tree/master/source
-    
-    fits a model and returns train and validation errors
-    
-    ---------     
-    model -- sklearn classifier model
-        The sklearn model
-    X -- numpy.ndarray        
-        The X part of the train set
-    y -- numpy.ndarray
-        The y part of the train set
-    Xv -- numpy.ndarray        
-        The X part of the validation set
-    yv -- numpy.ndarray
-        The y part of the validation set       
-    
-    Keyword arguments 
-    -----------------
-    mode -- str 
-        The mode for calculating error (default = 'regression') 
-        TC: Changed default mode to classification for this analysis
-
-    Returns
-    -------
-    errors -- list
-        A list containing train (on X, y) and validation (on Xv, yv) errors
-    
-    """
-    model.fit(X, y)
-    if mode.lower().startswith('regress'):
-        errors = [mean_squared_error(y, model.predict(X)), mean_squared_error(yv, model.predict(Xv))]
-    if mode.lower().startswith('classif'):
-        errors = [1 - model.score(X, y), 1 - model.score(Xv, yv)]    
-    return errors
-
-
-
+from fit_and_report_errors import fit_and_report_errors
 #Establish baseline/dummy model:
 from sklearn.dummy import DummyClassifier
-dummy = DummyClassifier()
+dummy = DummyClassifier(strategy= "most_frequent")
 dummy_errors = fit_and_report_errors(dummy, X_train, y_train, X_valid, y_valid)
 
 #Set up dictionary for storing various models and their errors:
@@ -135,10 +50,13 @@ model_dict = {}
 model_dict["dummy"] = dummy_errors
 
 #Test basic models without hyper parameter optimization yet: 
-models = {'Logistic regression': LogisticRegression(),
+max_iterations = 1000
+models = {'Logistic regression': LogisticRegression(max_iter=max_iterations),
     'RBF SVM' : SVC(), 
     'random forest' : RandomForestClassifier() , 
-    'neural net' : MLPClassifier()
+    'neural net' : MLPClassifier(max_iter= max_iterations),
+    'xgboost' : XGBClassifier(),
+    'lgbm': LGBMClassifier()
 }
 
 #For loop to go over basic models
@@ -153,22 +71,52 @@ model_results.train_error = round(model_results.train_error, ndigits=4)
 model_results.test_error = round(model_results.test_error, ndigits=4)
 model_results.to_csv("model_results.csv")
 
-model_results.columns
 #All models show an improvement over dummy model, with some (i.e., RBF SVM and Random Forest) showing HIGH signs of overfitting. 
 #Next steps would be to re-run with some hyper parameter testing to see where I can find improvements 
-#Also move beyond simple metric of model error to full confusion matrix to make sure I'm making progress in the right areas.    
+
+grid_params = {'Logistic regression': {"C": 10.0 ** np.arange(-5,6), "solver": ["liblinear", "lbfgs"]},
+    'RBF SVM' : {"C": 10.0 ** np.arange(-5,6)}, 
+    'random forest' : {"max_depth" : np.arange(5,50,5), "max_leaf_nodes" : np.arange(30,150, 10)}, 
+    'neural net' : {"activation" : ["relu"], "hidden_layer_sizes" : [(100,), (100, 10,), (100, 100, 10,), (100, 100, 100, 10,)]},
+    'xgboost' : {"max_depth" : np.arange(5,50,5)},
+    'lgbm': {"max_depth" : np.arange(5,50,5)} }
+
+model_gs_dict = {}
+models = {'Logistic regression': LogisticRegression(max_iter=max_iterations),'RBF SVM' : SVC()}
+
+for model_name, model in models.items():
+    start = time.time()
+    param_grid = grid_params[model_name]
+    gs_model = RandomizedSearchCV(model, param_grid)
+    gs_model_result = gs_model.fit(X=X_train, y=y_train)
+    end = time.time()
+    time_to_model = round(end - start, 2)
+    model_gs_dict[model_name] = {"params": gs_model_result.best_params_, #Save best parameters found
+        "score": gs_model_result.best_score_, #Save best score
+        "time": time_to_model, #Save model run time 
+        "best_estimator": gs_model.best_estimator_} #Save best estimator for using for visualization
+    print(model_name + " ran in " + str(time_to_model) + " seconds")
+
+best_score = max(d['score'] for d in model_gs_dict.values())
+for key in model_gs_dict.keys():
+    d = model_gs_dict[key]
+    if d['score'] == best_score:
+        best_model = key
+        break
+final_model = model_gs_dict[best_model]["best_estimator"]
+train_confusion_matrix = plot_confusion_matrix(final_model, X_train, y_train, values_format='.0f')
+valid_confusion_matrix = plot_confusion_matrix(final_model, X_valid, y_valid, values_format='.0f')
+import matplotlib.pyplot as plt
+plt.show()
 
 #What it means? 
 #Simple way to see what's important is what features (that we have in the dataset) can help us understand customer churn beheaviour
 #A simple way to do this is with Logistic Regression with the coefficients being an indication of feature importance
-lr = LogisticRegression()
-lr.fit(X_train, y_train)
+np.round(abs(final_model.coef_), decimals=2)
+important_features = (np.round(abs(final_model.coef_), decimals=2) > 0.2).tolist()
+coefs = final_model.coef_.tolist()[0]
 
-np.round(abs(lr.coef_), decimals=2)
-important_features = (np.round(abs(lr.coef_), decimals=2) > 0.2).tolist()
-
-coefs = lr.coef_.tolist()[0]
-
+#Make plot of coefficient importance: 
 zipped_cols_coefs = zip(X_train.columns, coefs)
 coef_plot_data = pd.DataFrame(zipped_cols_coefs)
 coef_plot_data.columns = ["Variable", "Coefficient"]
@@ -177,64 +125,12 @@ coef_plot_data = coef_plot_data.sort_values('Coefficient')
 
 var_ordered = coef_plot_data['Variable'][coef_plot_data['Coefficient'].sort_values().index.tolist()] 
 coef_plot_data['Variable'] = pd.Categorical(coef_plot_data['Variable'], categories=list(reversed(list(var_ordered))), ordered=True)
-from plotnine import ggplot, aes, geom_col, coord_flip, theme_classic
 
-(ggplot(coef_plot_data, aes(x='Variable', y='Coefficient'))
+
+from plotnine import ggplot, aes, geom_col, coord_flip, theme_classic, scale_fill_continuous
+(ggplot(coef_plot_data, aes(x='Variable', y='Coefficient', fill='Coefficient'))
 + geom_col()
 + coord_flip()
++ scale_fill_continuous()
 + theme_classic()).save(filename="LogRegr_Coefficients.png", dpi=300)
 
-
-
-
-
-#Save for later:
-
-
-#Fit and Report function:
-#Modified to be only for classification 
-def fit_and_report_scores(model, X, y, Xv, yv):
-    """
-    Original source: 
-    https://github.ubc.ca/MDS-2019-20/DSCI_573_feat-model-select_instructors/tree/master/source
-    
-    Original: fits a model and returns train and validation errors
-    New: fits a model and returns accuracy, precision, and recall for train and validation sets
-    Arguments
-    ---------     
-    model -- sklearn classifier model
-        The sklearn model
-    X -- numpy.ndarray        
-        The X part of the train set
-    y -- numpy.ndarray
-        The y part of the train set
-    Xv -- numpy.ndarray        
-        The X part of the validation set
-    yv -- numpy.ndarray
-        The y part of the validation set       
-    
-    Keyword arguments 
-    -----------------
-    mode -- str 
-        The mode for calculating error (default = 'regression') 
-        TC: Changed default mode to classification for this analysis
-
-    Returns
-    -------
-    errors -- list
-        A list containing accuracy, precision, and recall on train (on X, y) and validation (on Xv, yv)
-    
-    """
-    model.fit(X, y)
-    pred_train = model.predict(X)
-    pred_valid = model.predict(Xv)
-    accuracy = [accuracy_score(y, pred_train), accuracy_score(yv, pred_valid)]
-    precision = [precision_score(y, pred_train), precision_score(yv, pred_valid)]
-    recall = [recall_score(y, pred_train), recall_score(yv, pred_valid)]
-    scores = chain([accuracy, precision, recall])
-    return scores
-
-
-#model_results.columns = ["train_accuracy", "test_accuracy", 
-#    "train_precision", "test_precision", 
-#    "train_recall", "test_recall"]
